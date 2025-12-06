@@ -1,160 +1,308 @@
-// components/MainPage.tsx
 "use client";
-
-import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Orbit, Plus, Send, X } from "lucide-react";
-import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { LLMResponseType, useLLMQuery } from "@/hooks/useLLMQuery";
-import { ConfigDialog } from "@/components/ConfigDialog";
-import { ThinkingCard } from "@/components/Thinking";
+import { cn } from "@/lib/utils";
+import {
+  ArrowDown,
+  Link,
+  Link2,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
+import { ReactNode, useState } from "react";
+import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import { motion } from "motion/react";
+import { useLLMQuery } from "@/hooks/useLLMQuery";
+import { PublishDialog } from "@/components/ConfigDialog";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CompareProposalDialog } from "@/components/CompareProposals";
+
+function StickyToBottomContent(props: {
+  content: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  const context = useStickToBottomContext();
+  return (
+    <div
+      ref={context.scrollRef}
+      style={{ width: "100%", height: "100%" }}
+      className={props.className}
+    >
+      <div ref={context.contentRef} className={props.contentClassName}>
+        {props.content}
+      </div>
+
+      {props.footer}
+    </div>
+  );
+}
+
+function ScrollToBottom(props: { className?: string }) {
+  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+
+  if (isAtBottom) return null;
+  return (
+    <Button
+      variant="outline"
+      className={props.className}
+      onClick={() => scrollToBottom()}
+    >
+      <ArrowDown className="h-4 w-4" />
+      <span>Scroll to bottom</span>
+    </Button>
+  );
+}
 
 export default function MainPage() {
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>(
-    [],
-  );
-
-  const [step, setStep] = useState<{ content: string } | null>(null);
-
-  const onResponse = (message: string, type: LLMResponseType) => {
-    if (type === "step") {
-      setStep({ content: message });
-    } else if (type === "output") {
-      setStep(null);
-      setMessages((prev) => [...prev, { role: "agent", content: message }]);
-    }
-  };
-
-  const { sendQuery, connState, setup } = useLLMQuery({
-    onResponse,
-    onDisconnect: () => {
-      setMessages([]);
-      setStep(null);
-    },
-  });
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
   const [open, setOpen] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const { query, postRequest, thread, messages, isLoading, request } =
+    useLLMQuery();
+  const chatStarted = !!thread || !!messages.length;
 
-  const form = useForm({
-    defaultValues: {
-      query: "",
-    },
-  });
-
-  const submitQuery = (data: any) => {
-    if (!data.query) {
-      return;
-    } else {
-      sendQuery(data.query);
-      setMessages((prev) => [...prev, { role: "user", content: data.query }]);
-      form.reset();
-    }
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    query(input);
+    setInput("");
   };
-
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [messages, step]);
-
   return (
-    <main className="flex-1 flex flex-col bg-background relative">
-      {" "}
-      {/* Adjust height based on navbar */}
-      <div className="flex-1 overflow-hidden flex flex-col ">
-        <ScrollArea
-          ref={scrollAreaRef}
-          className="flex-1 p-4 max-h-[100vh] pb-[100px]"
+    <QueryClientProvider client={new QueryClient()}>
+      <div className="h-screen flex w-full overflow-hidden">
+        <div className="relative hidden lg:flex">
+          <motion.div
+            className="absolute z-20 h-full overflow-hidden border-r bg-white"
+            style={{ width: 300 }}
+            animate={{ x: chatHistoryOpen ? 0 : -300 }}
+            initial={{ x: -300 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
+            <div className="relative h-full" style={{ width: 300 }}>
+              <>{/** Chat History */}</>
+            </div>
+          </motion.div>
+        </div>
+        <div
+          className={cn(
+            "grid w-full grid-cols-[1fr_0fr] transition-all duration-500",
+            // artifactOpen && "grid-cols-[3fr_2fr]",
+          )}
         >
-          <div className="w-full mx-auto max-w-5xl">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-6`}
-              >
-                <div
-                  className={`flex ${msg.role === "user" ? "flex-row-reverse space-x-reverse space-x-3" : "space-x-3"}`}
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage
-                      src={
-                        msg.role === "user"
-                          ? "/user-avatar-placeholder.png"
-                          : "/grok-avatar.png"
-                      }
-                    />
-                    <AvatarFallback>
-                      {msg.role === "user" ? "U" : "G"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div
-                    className={`max-w-md px-4 py-2 rounded-2xl ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
-                  >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                  </div>
+          <motion.div
+            className={cn(
+              "relative flex min-w-0 flex-1 flex-col overflow-hidden",
+              !chatStarted && "grid-rows-[1fr]",
+            )}
+            layout
+            animate={{
+              marginLeft: chatHistoryOpen ? 300 : 0,
+              width: chatHistoryOpen ? "calc(100% - 300px)" : "100%",
+            }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
+            {!chatStarted && (
+              <div className="absolute top-0 left-0 z-10 flex w-full items-center justify-between gap-3 p-2 pl-4">
+                <div>
+                  {
+                    <Button
+                      className="hover:bg-gray-100"
+                      variant="ghost"
+                      onClick={() => setChatHistoryOpen((p) => !p)}
+                    >
+                      {chatHistoryOpen ? (
+                        <PanelRightOpen className="size-5" />
+                      ) : (
+                        <PanelRightClose className="size-5" />
+                      )}
+                    </Button>
+                  }
+                </div>
+                <div className="absolute top-2 right-4 flex items-center">
+                  <Link />
                 </div>
               </div>
-            ))}
-            {step && (
-              <ThinkingCard
-                text={step.content}
-                className="justify-start mb-2"
-              />
             )}
-          </div>
-        </ScrollArea>
-      </div>
-      {messages.length === 0 && (
-        <div className="absolute top-1/3 p-4 left-[50%] translate-[-50%] flex flex-col items-center">
-          <p className="text-5xl font-mono flex items-center gap-2">
-            <Orbit className="size-10" />
-            <span>Discovery</span>
-          </p>
-          {!connState && (
-            <Button className="mt-[4rem] h-11" onClick={() => setOpen(true)}>
-              <Plus /> Connect
-            </Button>
-          )}
-        </div>
-      )}
-      <ConfigDialog
-        open={open}
-        setOpen={setOpen}
-        onSubmit={(data) => setup({ ...data })}
-      />
-      {connState && (
-        <div className="absolute rounded-[50px] w-full max-w-3xl lg:max-w-4xl border bottom-2 left-[50%] translate-[-50%] bg-background py-2 px-5">
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(submitQuery)}
-              className="flex space-x-2 max-w-4xl mx-auto items-center"
-            >
-              <FormField
-                control={form.control}
-                name="query"
-                render={({ field }) => (
-                  <FormItem className="flex-1 min-h-[44px] resize-none">
-                    <FormControl>
-                      <input
-                        className="focus-visible:outline-none border-0 h-full w-full shadow-none"
-                        placeholder="Let's discover..."
-                        {...field}
-                      />
-                    </FormControl>
-                  </FormItem>
+            {chatStarted && (
+              <div className="relative z-10 flex items-center justify-between gap-3 p-2">
+                <div className="relative flex items-center justify-start gap-2">
+                  <div className="absolute left-0 z-10">
+                    {
+                      <Button
+                        className="hover:bg-gray-100"
+                        variant="ghost"
+                        onClick={() => setChatHistoryOpen((p) => !p)}
+                      >
+                        {chatHistoryOpen ? (
+                          <PanelRightOpen className="size-5" />
+                        ) : (
+                          <PanelRightClose className="size-5" />
+                        )}
+                      </Button>
+                    }
+                  </div>
+                  <motion.button
+                    className="flex cursor-pointer items-center gap-2"
+                    // onClick={() => setThreadId(null)}
+                    animate={{
+                      marginLeft: 48,
+                    }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 30,
+                    }}
+                  >
+                    <span className="text-xl font-semibold tracking-tight">
+                      Tendra
+                    </span>
+                  </motion.button>
+                  <motion.p
+                    className="flex cursor-pointer items-center gap-2"
+                    animate={{
+                      marginLeft: 24,
+                    }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 30,
+                    }}
+                  >
+                    <span className="text-lg font-medium tracking-tight">
+                      {thread?.title}
+                    </span>
+                  </motion.p>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center">
+                    <Link2 />
+                  </div>
+                </div>
+
+                <div className="from-background to-background/0 absolute inset-x-0 top-full h-5 bg-gradient-to-b" />
+              </div>
+            )}
+            <StickToBottom className="relative flex-1 overflow-hidden">
+              <StickyToBottomContent
+                className={cn(
+                  "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
+                  !chatStarted && "mt-[25vh] flex flex-col items-stretch",
+                  chatStarted && "grid grid-rows-[1fr_auto]",
                 )}
+                contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
+                content={messages.map((message, index) => {
+                  return (
+                    <div
+                      key={index}
+                      className={`group ${message.type === "user" ? "justify-end" : "justify-start"} flex w-full items-start gap-2`}
+                    >
+                      <div
+                        className={`${message.type === "user" ? "bg-muted text-right" : "bg-primary text-white"} w-fit rounded-3xl px-4 py-2 whitespace-pre-wrap`}
+                      >
+                        {message.content}
+                      </div>
+                    </div>
+                  );
+                })}
+                footer={
+                  <div className="sticky bottom-0 flex flex-col items-center gap-8 bg-white">
+                    {!chatStarted && (
+                      <div className="flex flex-col items-center gap-3">
+                        <h1 className="text-2xl font-semibold tracking-tight">
+                          Tendra
+                        </h1>
+                        <p>Start your request</p>
+                      </div>
+                    )}
+
+                    <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
+
+                    <div
+                      className={cn(
+                        "bg-muted relative z-10 mx-auto mb-8 w-full max-w-3xl rounded-2xl shadow-xs transition-all",
+                      )}
+                    >
+                      <form
+                        onSubmit={handleSubmit}
+                        className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                      >
+                        <textarea
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !e.metaKey &&
+                              !e.nativeEvent.isComposing
+                            ) {
+                              e.preventDefault();
+                              const el = e.target as HTMLElement | undefined;
+                              const form = el?.closest("form");
+                              form?.requestSubmit();
+                            }
+                          }}
+                          placeholder="Type your message..."
+                          className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                        />
+
+                        <div className="flex items-center gap-6 p-2 pt-4">
+                          <Button
+                            variant={"outline"}
+                            className="shadow-md transition-all"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setOpen(true);
+                            }}
+                            disabled={!request}
+                          >
+                            Publish Request
+                          </Button>
+                          <Button
+                            variant={"outline"}
+                            className="shadow-md transition-all"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCompareOpen(true);
+                            }}
+                            disabled={!request}
+                          >
+                            Compare Proposals
+                          </Button>
+                          <Button
+                            type="submit"
+                            className="ml-auto shadow-md transition-all"
+                            disabled={isLoading || !input.trim()}
+                          >
+                            Send
+                          </Button>
+                          <PublishDialog
+                            open={open}
+                            setOpen={setOpen}
+                            onSubmit={({ vendors }) => {
+                              if (request && vendors.length > 0) {
+                                postRequest(request, vendors);
+                              }
+                              setOpen(false);
+                            }}
+                          />
+                          <CompareProposalDialog
+                            open={compareOpen}
+                            setOpen={setCompareOpen}
+                            thread={thread}
+                          />
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                }
               />
-              <Button type="submit" variant={"ghost"} size="icon">
-                <Send className="size-5" />
-                <span className="sr-only">Send</span>
-              </Button>
-            </form>
-          </Form>
+            </StickToBottom>
+          </motion.div>
         </div>
-      )}
-    </main>
+      </div>
+    </QueryClientProvider>
   );
 }

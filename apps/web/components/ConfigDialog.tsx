@@ -3,81 +3,100 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "./ui/table";
+import { Checkbox } from "./ui/checkbox";
+import { Button } from "./ui/button";
 
-import { ExcelConfigForm } from "./forms/ExcelConfigForm";
-import { PostgresConfigForm } from "./forms/PostgresConfigForm";
-import { Source } from "@/types/Source";
+export interface Vendor {
+  id: string;
+  name: string;
+}
 
 interface ConfigDialogProps {
   open: boolean;
   setOpen: (open: boolean) => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: { vendors: string[] }) => void;
 }
 
-export function ConfigDialog({ open, setOpen, onSubmit }: ConfigDialogProps) {
-  const [source, setSource] = React.useState<Source | null>(null);
+export function PublishDialog({ open, setOpen, onSubmit }: ConfigDialogProps) {
+  const [selectedVendors, setSelectedVendors] = React.useState<string[]>([]);
+  const { data: vendors, refetch } = useQuery<Vendor[]>({
+    queryKey: ["vendors"],
+    queryFn: async () => {
+      const response = await axios
+        .get("http://localhost:8080/vendors/")
+        .then((res) => res.data);
+      return response.data.vendors;
+    },
+    throwOnError: false,
+  });
 
   const handleSubmit = (data: any) => {
-    onSubmit({ source, config: data });
-    setOpen(false);
-    setSource(null);
+    onSubmit({ vendors: selectedVendors });
+  };
+
+  React.useEffect(() => {
+    if (open) {
+      refetch();
+    }
+  }, [open]);
+
+  const handleVendors = (id: string) => {
+    setSelectedVendors((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Configuration Source</DialogTitle>
+          <DialogTitle>Request</DialogTitle>
           <DialogDescription>
-            Choose the source and configure its connection.
+            Choose vendors to receive proposals
           </DialogDescription>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableCell>
+                  <div>
+                    <Checkbox disabled />
+                  </div>
+                </TableCell>
+                <TableCell>Vendor</TableCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(vendors || []).map((vendor) => (
+                <TableRow key={vendor.id}>
+                  <TableCell>
+                    <div>
+                      <Checkbox
+                        onCheckedChange={() => handleVendors(vendor.id)}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell>{vendor.name}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </DialogHeader>
-
-        {/* Step 1: Choose source */}
-        {!source && (
-          <div className="grid gap-4">
-            <Card
-              className="cursor-pointer hover:bg-muted transition"
-              onClick={() => setSource(Source.EXCEL)}
-            >
-              <CardHeader>
-                <CardTitle>📊 Excel File</CardTitle>
-              </CardHeader>
-              <CardContent>Import data from an Excel file (.xlsx)</CardContent>
-            </Card>
-
-            <Card
-              className="cursor-pointer hover:bg-muted transition"
-              onClick={() => setSource(Source.POSTGRES)}
-            >
-              <CardHeader>
-                <CardTitle>🗄️ Postgres Database</CardTitle>
-              </CardHeader>
-              <CardContent>Connect to a PostgreSQL database</CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Step 2: Show selected form */}
-        {source === Source.EXCEL && (
-          <ExcelConfigForm
-            onBack={() => setSource(null)}
-            onSubmit={handleSubmit}
-          />
-        )}
-
-        {source === Source.POSTGRES && (
-          <PostgresConfigForm
-            onBack={() => setSource(null)}
-            onSubmit={handleSubmit}
-          />
-        )}
+        <DialogFooter>
+          <Button onClick={() => handleSubmit({ vendors: selectedVendors })}>
+            Submit
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

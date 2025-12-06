@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -17,7 +16,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <main className="flex">
-          <Sidebar />
           {children}
           <Toaster position="top-center" richColors />
         </main>

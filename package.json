@@ -1,5 +1,5 @@
 {
-  "name": "discovery",
+  "name": "tendra",
   "private": true,
   "scripts": {
     "build": "turbo run build",
@@ -20,5 +20,6 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {}
 }

@@ -1,115 +1,95 @@
-import { State } from "@/types/LLMState";
-import { Source, SourceConfig } from "@/types/Source";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import axios from "axios";
 import { toast } from "sonner";
-
-const socketUrl = "ws://localhost:8000/api/ws";
 
 export type LLMResponseType = "error" | "step" | "agent" | "output" | "info";
 
-export type LLMResponse = {
-  type: LLMResponseType;
-  message: string;
+export interface Message {
+  id: string | null;
+  content: string;
+  type: "user" | "ai";
+}
+
+export type Thread = {
+  id: string;
+  title: string;
 };
 
-export const useLLMQuery = ({
-  onResponse,
-  onDisconnect,
-}: {
-  onResponse: (message: string, type: LLMResponseType) => void;
-  onDisconnect: () => void;
-}) => {
-  const websocket = useRef<WebSocket | null>(null);
-  const [connState, setConnState] = useState<State | null>(null);
+export type Request = {
+  title: string;
+  requirements: string;
+  budget: string;
+  delivery: string;
+  payment: string;
+  otherTerms?: string | undefined;
+};
 
-  const ws = () => {
-    if (websocket.current) return websocket.current;
-    throw Error("Websocket not intialized");
+export type LLMResponse = {
+  message: string;
+  requestFormat?: {
+    title: string;
+    requirements: string;
+    budget: string;
+    delivery: string;
+    payment: string;
+    otherTerms?: string | undefined;
+  };
+};
+
+export const useLLMQuery = (_thread?: Thread) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [thread, setThread] = useState<Thread | null>(_thread ?? null);
+  const [request, setRequest] = useState<Request | null>(null);
+
+  const query = async (query: string) => {
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      { id: null, content: query, type: "user" },
+    ]);
+    setIsLoading(true);
+    const response = await axios
+      .post<{ data: { thread: Thread; response: LLMResponse } }>(
+        `http://localhost:8080/query${thread ? `/${thread.id}` : ""}`,
+        {
+          query,
+        },
+      )
+      .then((res) => res.data.data)
+      .finally(() => setIsLoading(false));
+    setThread(response.thread);
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      { id: null, content: response.response.message, type: "ai" },
+    ]);
+    setRequest(response.response.requestFormat ?? null);
   };
 
-  const onConnect = () => {};
-
-  const setup = ({
-    source,
-    config,
-  }: {
-    source: Source;
-    config: SourceConfig;
-  }) => {
-    ws().send(
-      JSON.stringify({
-        type: "setup",
-        source: source,
-        config: config,
-      }),
-    );
-  };
-
-  const sendQuery = (query: string) => {
-    ws().send(
-      JSON.stringify({
-        type: "query",
-        query: query,
-      }),
-    );
-  };
-
-  const handleAgent = (message: string) => {
-    toast.info(message);
-    setConnState("CONNECTED");
-  };
-
-  const handleError = (message: string) => {
-    toast.info(message);
-    setConnState(null);
-  };
-
-  const handleInfo = (info: string) => toast.info(info);
-
-  const handleResponse = (message: string, type: LLMResponseType) =>
-    onResponse(message, type);
-
-  const onMessage = (data: MessageEvent) => {
-    const response = JSON.parse(data.data) as LLMResponse;
-    if (response.type === "agent") handleAgent(response.message);
-    if (response.type === "info") handleInfo(response.message);
-    if (response.type === "step") handleResponse(response.message, "step");
-    if (response.type === "output") handleResponse(response.message, "output");
-    if (response.type === "error") handleError(response.message);
-  };
-
-  const onError = (ev: Event) => {
-    toast.error("Error connecting to the server");
-  };
-
-  const onClose = () => {
-    toast.warning("Connection closed");
-    setConnState(null);
-    onDisconnect();
-  };
-
-  useEffect(() => {
-    if (!websocket.current) {
-      websocket.current = new WebSocket(socketUrl);
-      websocket.current.addEventListener("open", onConnect);
-      websocket.current.addEventListener("message", onMessage);
-      websocket.current.addEventListener("close", onClose);
-      websocket.current.addEventListener("error", onError);
+  const postRequest = async (request: Request, vendors: string[]) => {
+    if (!thread) {
+      toast.error("No thread selected");
+      return;
     }
-
-    return () => {
-      if (websocket.current) {
-        websocket.current.removeEventListener("open", onConnect);
-        websocket.current.removeEventListener("message", onMessage);
-        websocket.current.removeEventListener("error", onError);
-        websocket.current.close();
-      }
-    };
-  }, []);
+    setIsLoading(true);
+    const response = await axios
+      .post<{ message: string }>(
+        `http://localhost:8080/requests/${thread.id}`,
+        {
+          request,
+          vendors,
+        },
+      )
+      .then((res) => res.data)
+      .finally(() => setIsLoading(false));
+    toast.success(response.message);
+  };
 
   return {
-    sendQuery,
-    setup,
-    connState,
+    query,
+    thread,
+    isLoading,
+    messages,
+    postRequest,
+    request,
   };
 };
